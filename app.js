@@ -128,7 +128,7 @@ app.post('/api/alert', requireAuth, async (req, res) => {
                     </Say>
                   </Response>`,
           to: user.emergencyPhone,
-          from: process.env.TWILIO_PHONE_NUMBER 
+          from: process.env.TWILIO_PHONE_NUMBER
         });
         console.log(`Emergency call initiated to ${user.emergencyPhone}`);
       } catch (twilioErr) {
@@ -156,10 +156,10 @@ app.post('/api/premium/service-request', requireAuth, async (req, res) => {
     });
 
     await newRequest.save(); // This sends it to the DB
-    
-    res.json({ 
-      success: true, 
-      message: "Request received. A coordinator will contact you shortly." 
+
+    res.json({
+      success: true,
+      message: "Request received. A coordinator will contact you shortly."
     });
   } catch (err) {
     console.error("Premium Save Error:", err);
@@ -175,23 +175,23 @@ app.get('/responder/appointments', requireAuth, (req, res) => {
 
 // 2. API to fetch all premium requests for the responder
 app.get('/api/responder/requests', requireAuth, async (req, res) => {
-try {
-  if (req.session.userRole !== 'responder') return res.status(403).send("Unauthorized");
+  try {
+    if (req.session.userRole !== 'responder') return res.status(403).send("Unauthorized");
 
-  // Fetch requests and join with user names
-  const requests = await PremiumRequest.find({ status: 'pending' })
-    .sort({ createdAt: -1 })
-    .lean();
+    // Fetch requests and join with user names
+    const requests = await PremiumRequest.find({ status: 'pending' })
+      .sort({ createdAt: -1 })
+      .lean();
 
-  const populated = await Promise.all(requests.map(async (r) => {
+    const populated = await Promise.all(requests.map(async (r) => {
       const user = await User.findById(r.userId).select('name');
       return { ...r, userName: user?.name || "Unknown User" };
-  }));
+    }));
 
-  res.json(populated);
-} catch (err) {
-  res.status(500).json({ error: err.message });
-}
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 let csvData = [];
@@ -202,7 +202,7 @@ try {
 
   if (parsedData.sport && Array.isArray(parsedData.sport)) {
     csvData = parsedData.sport.map((entry, index) => {
-      
+
       const isActive = entry.STEPS > 500;
       return {
         heart_rate: isActive ? 95 + (index % 15) : 70 + (index % 10),
@@ -260,7 +260,7 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/help-call', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.session.userId);
-    
+
     if (!user || !user.emergencyPhone) {
       return res.status(400).json({ error: "No emergency contact found." });
     }
@@ -508,7 +508,7 @@ io.on('connection', (socket) => {
 
   socket.on('vitals_update', (data) => {
     const { heartRate, spo2, hrv, symptoms } = data;
-    
+
     let score = 0;
     if (heartRate > 120 || heartRate < 50) score += 30;
     else if (heartRate > 100 || heartRate < 60) score += 15;
