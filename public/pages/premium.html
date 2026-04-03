@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cardiac SOS — Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+  --gold: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+  --gold-text: #f6d365;
+  --dark-bg: #0f1115;
+}
+
+.premium-container {
+  max-width: 900px;
+  margin: 80px auto;
+  padding: 20px;
+}
+
+/* Hero Section */
+.premium-hero {
+  text-align: center;
+  background: radial-gradient(circle at center, rgba(246, 211, 101, 0.05) 0%, transparent 70%);
+  border-radius: 24px;
+  margin-bottom: 2rem;
+}
+
+.premium-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  background: var(--gold);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 10px;
+}
+
+/* Benefit Cards */
+.benefit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.benefit-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  border-radius: 16px;
+  transition: transform 0.3s ease;
+}
+
+.benefit-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--gold-text);
+}
+
+.benefit-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+/* Pricing Section */
+.pricing-card {
+  background: var(--card);
+  border: 2px solid var(--gold-text);
+  padding: 2.5rem;
+  border-radius: 24px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.price-tag {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.price-tag span {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+/* Premium Form Styling */
+.premium-form-wrap {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.premium-input {
+  width: 100%;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  margin-bottom: 1rem;
+}
+
+.premium-input:focus {
+  border-color: var(--gold-text);
+  outline: none;
+}
+  </style>
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-logo">
+          <div class="nav-pulse"></div>
+          Cardiac<span>SOS</span>
+        </div>
+        <ul class="nav-links">
+          <li><a href="/dashboard" class="active">Dashboard</a></li>
+          <li><a href="/profile" class="hide-sm">Profile</a></li>
+          <li><a href="/premium" id="premium-link" class="premium-nav-btn">Premium</a></li>
+          <li><a href="#" onclick="logout(); return false;" class="hide-sm">Sign Out</a></li>
+        </ul>
+      </nav>
+    
+    <div class="container" style="padding-top: 5rem;">
+        <div id="non-premium-view" class="card hidden">
+            <h1 style="color:var(--amber);">Unlock Cardiac SOS Premium</h1>
+            <p>For just <strong>₹90/month</strong>, get access to elite medical coordination:</p>
+            <ul style="margin: 1.5rem 0; line-height: 2;">
+                <li>📍 Priority Booking at nearby medical facilities</li>
+                <li>👨‍⚕️ 24/7 Online Consultation for non-emergencies</li>
+                <li>🚑 Fast-track Ambulance Dispatch</li>
+                <li>📂 AI-summarized Medical Reports for doctors</li>
+            </ul>
+            <button onclick="subscribe()" class="btn btn-primary" style="background:var(--amber);">Subscribe Now (₹90/m)</button>
+        </div>
+
+        <div class="premium-container">
+  
+            <div id="non-premium-view" class="hidden">
+              <div class="premium-hero">
+                <h1 class="premium-title">Cardiac SOS Premium</h1>
+                <p style="color:var(--muted);">Advanced medical coordination at your fingertips.</p>
+              </div>
+          
+              <div class="benefit-grid">
+                <div class="benefit-card">
+                  <span class="benefit-icon">📍</span>
+                  <h3>Priority Booking</h3>
+                  <p style="font-size:0.85rem; color:var(--sub);">Skip the queues. We book your tests and appointments at top facilities instantly.</p>
+                </div>
+                <div class="benefit-card">
+                  <span class="benefit-icon">👨‍⚕️</span>
+                  <h3>Direct AI Link</h3>
+                  <p style="font-size:0.85rem; color:var(--sub);">Summarized medical history sent directly to specialists before your visit.</p>
+                </div>
+                <div class="benefit-card">
+                  <span class="benefit-icon">🚑</span>
+                  <h3>Express Response</h3>
+                  <p style="font-size:0.85rem; color:var(--sub);">Priority dispatch for ambulance services in your local area.</p>
+                </div>
+              </div>
+          
+              <div class="pricing-card">
+                <div class="price-tag">₹90<span>/month</span></div>
+                <p style="margin-bottom: 1.5rem; color:var(--muted);">Cancel anytime. No hidden charges.</p>
+                <button onclick="subscribe()" class="btn btn-primary" style="background:var(--gold); color:black; width:100%; padding:15px; font-weight:800;">
+                  UPGRADE TO PREMUM
+                </button>
+              </div>
+            </div>
+          
+            <div id="premium-view" class="hidden">
+              <div class="premium-hero">
+                <h1 class="premium-title">Member Service Desk</h1>
+                <p>Active Premium Subscription</p>
+              </div>
+          
+              <div class="card premium-form-wrap">
+                <h3 style="margin-bottom:1rem;">Request Medical Assistance</h3>
+                <form id="service-form">
+                  <label style="font-size:0.8rem; color:var(--muted);">Describe your requirement</label>
+                  <textarea id="problem" class="premium-input" rows="4" placeholder="e.g., I need a cardiologist appointment at Apollo Hospital for tomorrow morning..."></textarea>
+                  
+                  <label style="font-size:0.8rem; color:var(--muted);">Service Category</label>
+                  <select id="facilityType" class="premium-input">
+                    <option value="appointment">Specialist Appointment</option>
+                    <option value="lab">Lab Test / Blood Work</option>
+                    <option value="emergency">Emergency Transport</option>
+                  </select>
+                  
+                  <button type="submit" class="btn btn-primary" style="background:var(--gold); color:black; width:100%; font-weight:800;">
+                    SUBMIT PRIORITY REQUEST
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+    <script src="/js/utils.js"></script>
+    <script>
+        async function checkStatus() {
+            const data = await api('GET', '/api/premium/status');
+            if (data.isPremium) {
+                document.getElementById('premium-view').classList.remove('hidden');
+            } else {
+                document.getElementById('non-premium-view').classList.remove('hidden');
+            }
+        }
+
+        async function subscribe() {
+            if(confirm("Confirm subscription for ₹90/month?")) {
+                await api('POST', '/api/premium/subscribe');
+                location.reload();
+            }
+        }
+
+        document.getElementById('service-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const body = {
+                problem: document.getElementById('problem').value,
+                facilityType: document.getElementById('facilityType').value
+            };
+            const res = await api('POST', '/api/premium/service-request', body);
+            alert(res.message);
+        }
+
+        checkStatus();
+    </script>
+</body>
+</html>

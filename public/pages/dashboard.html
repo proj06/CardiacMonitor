@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cardiac SOS — Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    .dash-grid {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 1.2rem;
+      padding: 1.5rem 0;
+    }
+    .dash-left { display: flex; flex-direction: column; gap: 1.2rem; }
+    .dash-right { display: flex; flex-direction: column; gap: 1.2rem; }
+
+    .sos-section {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 1rem; padding: 1.5rem;
+    }
+    .sos-caption { font-size: 0.78rem; color: var(--muted); text-align: center; max-width: 180px; line-height: 1.5; }
+
+    .ecg-canvas-wrap {
+      width: 100%; height: 120px;
+      position: relative;
+    }
+
+    .hr-big {
+      font-family: var(--font-mono);
+      font-size: 3.5rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--text);
+    }
+    .hr-unit { font-size: 0.9rem; color: var(--muted); }
+
+    .live-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(16,185,129,0.1);
+      border: 1px solid rgba(16,185,129,0.3);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 0.72rem;
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .risk-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      margin-top: 0.4rem;
+    }
+    .risk-badge.normal { background: rgba(16,185,129,0.15); color: var(--green); }
+    .risk-badge.warning { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .risk-badge.emergency { background: rgba(239,68,68,0.15); color: var(--red); }
+
+    .btn-ai {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-ai:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  filter: brightness(1.1);
+}
+
+.btn-ai:active {
+  transform: translateY(0);
+}
+
+.btn-ai:disabled {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  box-shadow: none;
+  cursor: not-allowed;
+  animation: ai-loading-pulse 1.5s infinite;
+}
+
+@keyframes ai-loading-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+    @media (max-width: 860px) {
+      .dash-grid { grid-template-columns: 1fr; }
+      .dash-right { flex-direction: row; flex-wrap: wrap; }
+      .dash-right > * { flex: 1 1 240px; }
+    }
+
+    .symptom-chip {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--sub);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-body);
+      font-weight: 500;
+      width: 100%;
+    }
+
+    .symptom-chip svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      transition: var(--transition);
+    }
+
+    .symptom-chip:hover { border-color: var(--amber); color: var(--amber); }
+    .symptom-chip.active { 
+      border-color: var(--red); 
+      color: var(--red); 
+      background: var(--red-glow); 
+    }
+    .symptom-chip.active svg { stroke: var(--red); }
+    
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-logo">
+      <div class="nav-pulse"></div>
+      Cardiac<span>SOS</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="/dashboard" class="active">Dashboard</a></li>
+      <li><a href="/profile" class="hide-sm">Profile</a></li>
+      <li><a href="/premium" id="premium-link" class="premium-nav-btn">Premium</a></li>
+      <li><a href="#" onclick="logout(); return false;" class="hide-sm">Sign Out</a></li>
+    </ul>
+  </nav>
+
+  <div class="page">
+    <div class="container">
+      <div style="padding-top:1.5rem; display:flex; align-items:center; justify-content:space-between;">
+        <div>
+          <h2 style="font-family:var(--font-head); font-size:1.4rem; font-weight:800;">Live Monitor</h2>
+          <p style="color:var(--muted); font-size:0.82rem;" id="user-greeting">Loading...</p>
+        </div>
+        <div class="live-pill">
+          <span class="status-dot"></span> LIVE
+        </div>
+      </div>
+
+      <div class="dash-grid">
+        <!-- LEFT COLUMN -->
+        <div class="dash-left">
+          <!-- Heart Rate + ECG -->
+          <div class="card">
+            <div class="section-header">
+              <span class="section-title">ECG + Heart Rate</span>
+              <span class="section-hint" id="ecg-status">Simulating...</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:2rem; margin-bottom:1rem;">
+              <div>
+                <div class="hr-big" id="hr-display">--</div>
+                <div class="hr-unit">BPM</div>
+              </div>
+              <div style="flex:1;">
+                <div class="ecg-canvas-wrap">
+                  <canvas id="ecg-chart"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="vitals-grid">
+              <div class="vital-card" style="--accent: var(--blue);">
+                <div class="vital-label">SpO₂</div>
+                <div class="vital-value" id="spo2-display">--</div>
+                <div class="vital-unit">% oxygen</div>
+              </div>
+              <div class="vital-card" style="--accent: var(--amber);">
+                <div class="vital-label">HRV</div>
+                <div class="vital-value" id="hrv-display">--</div>
+                <div class="vital-unit">ms variability</div>
+              </div>
+              <div class="vital-card" style="--accent: var(--green);">
+                <div class="vital-label">RR Interval</div>
+                <div class="vital-value" id="rr-display">--</div>
+                <div class="vital-unit">ms</div>
+              </div>
+              <div class="vital-card" style="--accent: var(--red);">
+                <div class="vital-label">ECG Value</div>
+                <div class="vital-value" id="ecg-display">--</div>
+                <div class="vital-unit">mV signal</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- HR Trend Chart -->
+          <div class="card">
+            <div class="section-header">
+              <span class="section-title">Heart Rate Trend</span>
+              <span class="section-hint">Last 30 readings</span>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="hr-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Symptom Checker -->
+          <div class="card">
+            <div class="section-header">
+              <span class="section-title">Symptom Check</span>
+              <span class="section-hint">Select all that apply</span>
+            </div>
+            <div class="symptom-grid" id="symptom-grid">
+              <button class="symptom-chip" data-key="chest_pain" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                Chest Pain
+              </button>
+              <button class="symptom-chip" data-key="jaw_pain" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><path d="M16 11c0 2.2-1.8 4-4 4s-4-1.8-4-4 1.8-4 4-4 4 1.8 4 4Z"/><path d="M12 21c-5 0-9-4-9-9 0-3 2-6 5-8h8c3 2 5 5 5 8 0 5-4 9-9 9Z"/><path d="M9 15v2c0 1.7 1.3 3 3 3s3-1.3 3-3v-2"/></svg>
+                Jaw Pain
+              </button>
+              <button class="symptom-chip" data-key="arm_pain" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><path d="M15 14c.2 1.1.7 2.1 1.5 2.8.8.7 1.8 1.2 2.5 1.2 1 0 2-1 2-2 0-2-2-3-4-3"/><path d="M11 14c-1.1 0-2.1-.5-2.8-1.5-.7-.8-1.2-1.8-1.2-2.5 0-1 1-2 2-2 2 0 3 2 3 4"/><path d="M3 14c0 1.1.9 2 2 2 1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2Z"/><path d="M7 14h4v0"/><path d="M15 14h2v0"/></svg>
+                Arm Pain
+              </button>
+              <button class="symptom-chip" data-key="breathlessness" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>
+                Breathlessness
+              </button>
+              <button class="symptom-chip" data-key="nausea" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 12-4-4-4 4"/><path d="m12 8v8"/></svg>
+                Nausea
+              </button>
+              <button class="symptom-chip" data-key="dizziness" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.21-8.56"/><path d="M22 2v4h-4"/><path d="m22 6-3.01-3"/></svg>
+                Dizziness
+              </button>
+              <button class="symptom-chip" data-key="sweating" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>
+                Sweating
+              </button>
+              <button class="symptom-chip" data-key="fatigue" onclick="toggleSymptom(this)">
+                <svg viewBox="0 0 24 24"><rect width="16" height="10" x="2" y="7" rx="2"/><path d="M22 11v2"/><path d="M6 11v2"/><path d="M10 11v2"/></svg>
+                Fatigue
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="dash-right">
+          <!-- Risk Meter -->
+          <div class="card" style="text-align:center;">
+            <div class="section-title" style="margin-bottom:1rem;">Cardiac Risk</div>
+            <div class="risk-meter-wrap">
+              <div class="risk-arc">
+                <svg viewBox="0 0 180 100" xmlns="http://www.w3.org/2000/svg">
+                  <!-- Background arc -->
+                  <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="var(--border)" stroke-width="10" stroke-linecap="round"/>
+                  <!-- Risk arc -->
+                  <path id="risk-arc-path" d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="var(--green)" stroke-width="10" stroke-linecap="round"
+                    stroke-dasharray="220" stroke-dashoffset="220" style="transition:stroke-dashoffset 0.6s, stroke 0.4s;"/>
+                </svg>
+                <div class="risk-score-label">
+                  <div class="risk-score-num" id="risk-num" style="color:var(--green);">0</div>
+                  <div class="risk-score-text">/ 100</div>
+                </div>
+              </div>
+              <!-- Risk badge and advice — referenced by updateRisk() -->
+              <div id="risk-badge" class="risk-badge normal">NORMAL</div>
+              <div id="risk-advice" style="font-size:0.78rem; color:var(--muted); margin-top:0.5rem; line-height:1.5;">
+                All vitals within normal range. Stay hydrated and rest well.
+              </div>
+            </div>
+
+            <!-- Gemini AI Insight -->
+            <div class="card" id="ai-insight-card" style="border: 1px solid rgba(59,130,246,0.2); background: rgba(59,130,246,0.02); margin-top: 1rem;">
+              <div class="section-header">
+                <span class="section-title" style="color:var(--blue);">AI Insight</span>
+                <button onclick="runAiAnalysis()" id="ai-btn" class="btn-ai">Analyze</button>
+              </div>
+              <div id="ai-content">
+                <p style="font-size:0.8rem; color:var(--muted);">Click analyze for a clinical breakdown of your current vitals.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- SOS Button -->
+          <div class="card sos-section">
+            <div class="section-title">Emergency SOS</div>
+            <button class="sos-btn" id="sos-btn" onclick="triggerSOS()">
+              SOS
+              <span class="sos-sub">PRESS & HOLD</span>
+            </button>
+            <p class="sos-caption">Press to send emergency alert to nearby responders with your location and vitals.</p>
+          </div>
+
+          <!-- Quick Contacts -->
+          <div class="card">
+            <div class="section-title" style="margin-bottom:0.8rem;">Emergency Contact</div>
+            <div id="contact-info" style="color:var(--muted); font-size:0.85rem;">
+              <a href="/profile" style="color:var(--red); font-size:0.82rem;">+ Add emergency contact →</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Emergency Confirmation Modal -->
+  <div class="overlay hidden" id="confirm-modal">
+    <div class="modal">
+      <div style="font-size:2.5rem; margin-bottom:0.5rem;">⚠️</div>
+      <div class="modal-title" style="color:var(--red);">Possible Cardiac Emergency</div>
+      <div class="modal-sub">Your vitals indicate a potential cardiac event. Are you okay?</div>
+      <div class="countdown-ring">
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="34" fill="none" stroke="var(--border)" stroke-width="6"/>
+          <circle id="countdown-circle" cx="40" cy="40" r="34" fill="none" stroke="var(--red)" stroke-width="6"
+            stroke-dasharray="213.6" stroke-dashoffset="0" stroke-linecap="round"
+            style="transition: stroke-dashoffset 1s linear; transform-origin: center; transform: rotate(-90deg);"/>
+        </svg>
+        <div class="countdown-num" id="countdown-num">30</div>
+      </div>
+      <p style="font-size:0.82rem; color:var(--muted); margin-bottom:1.5rem;">
+        Emergency alert activates in <strong id="countdown-sec" style="color:var(--red);">30</strong> seconds if no response.
+      </p>
+      <div style="display:flex; gap:0.75rem; justify-content:center;">
+        <button class="btn btn-outline" onclick="dismissAlert()" style="min-width:120px;">I'm OK</button>
+        <button class="btn btn-primary" onclick="confirmEmergency()" style="min-width:120px;">Send Alert</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SOS Sent Modal -->
+  <div class="overlay hidden" id="sent-modal">
+    <div class="modal">
+      <div class="modal-title">Alert Sent!</div>
+      <div class="modal-sub">Emergency responders have been notified. Help is on the way.</div>
+      <div style="background:var(--surface); border-radius:8px; padding:1rem; margin-bottom:1.5rem; text-align:left;">
+        <div style="font-size:0.8rem; color:var(--muted); margin-bottom:0.5rem;">FIRST AID — While waiting:</div>
+        <div style="font-size:0.85rem; line-height:1.8;" id="first-aid-tips">
+          • Stay calm and sit or lie down<br>
+          • Loosen tight clothing<br>
+          • Do not eat or drink anything<br>
+          • If prescribed, take aspirin (if not allergic)<br>
+          • Keep your phone nearby for responder calls
+        </div>
+      </div>
+      <button class="btn btn-outline" onclick="closeSentModal()" style="width:100%;">Close</button>
+    </div>
+  </div>
+
+  <div class="toast-container"></div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    let currentUser = null;
+    let csvData = [];
+    let csvIndex = 0;
+    let activeSymptoms = [];
+    let currentVitals = { heartRate: 72, spo2: 98, hrv: 45, rrInterval: 833, ecg: 0.12 };
+    let countdownTimer = null;
+    let emergencyShown = false;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+
+    const socket = io();
+
+    // ─── Charts ────────────────────────────────────────────────────────────────
+    const ecgCtx = document.getElementById('ecg-chart').getContext('2d');
+    const ecgChart = new Chart(ecgCtx, {
+      type: 'line',
+      data: {
+        labels: Array(60).fill(''),
+        datasets: [{
+          data: Array(60).fill(0),
+          borderColor: 'var(--red)',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.4
+        }]
+      },
+      options: {
+        animation: false,
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { display: false, min: -1, max: 3 }
+        }
+      }
+    });
+
+    const hrCtx = document.getElementById('hr-chart').getContext('2d');
+    const hrChart = new Chart(hrCtx, {
+      type: 'line',
+      data: {
+        labels: Array(30).fill(''),
+        datasets: [{
+          data: Array(30).fill(null),
+          borderColor: 'var(--blue)',
+          backgroundColor: 'rgba(59,130,246,0.08)',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        animation: { duration: 400 },
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            grid: { color: 'var(--border)' },
+            ticks: { color: 'var(--muted)', font: { family: 'Space Mono', size: 10 } },
+            min: 40, max: 160
+          }
+        }
+      }
+    });
+
+    // ─── Init ───────────────────────────────────────────────────────────────────
+    async function init() {
+      currentUser = await requireLogin();
+      if (!currentUser) return;
+      if (currentUser.role === 'responder') { window.location.href = '/responder'; return; }
+      document.getElementById('user-greeting').textContent = `Hello, ${currentUser.name}`;
+      if (currentUser.emergencyContact) {
+        document.getElementById('contact-info').innerHTML =
+          `<strong>${currentUser.emergencyContact}</strong><br><span style="color:var(--sub)">${currentUser.emergencyPhone || 'No phone set'}</span>`;
+      }
+      try {
+        csvData = await api('GET', '/api/csv-data');
+      } catch {}
+      startDataStream();
+    }
+
+    // ─── Data Stream (CSV simulation) ──────────────────────────────────────────
+    function startDataStream() {
+  if (csvData.length === 0) {
+    csvData = Array.from({ length: 51 }, (_, i) => {
+      // 1. Heart Rate: Dynamic oscillation
+      const heartRate = 72 + Math.round(Math.sin(i * 0.3) * 15 + Math.random() * 5);
+
+      // 2. ECG Value: Standard wave simulation
+      const ecg = (0.1 + Math.sin(i * 0.4) * 0.8 + Math.random() * 0.3).toFixed(2);
+
+      // 3. SpO2: Dynamic fluctuation (95-99% range)
+      // We use a base that slowly drifts, then add ±1% random noise
+      const spo2Base = 98 - (i > 30 ? (i - 30) * 0.2 : 0); 
+      const spo2 = Math.min(100, Math.max(88, Math.round(spo2Base + (Math.random() * 2 - 1))));
+
+      // 4. Respiration Rate (RR): Oscillating between 12-20 breaths per minute
+      // Breathing is slower than heart rate, so we use a smaller multiplier (0.15)
+      const respirationRate = Math.round(16 + Math.sin(i * 0.15) * 4 + (Math.random() * 1));
+
+      // 5. HRV & RR Interval: Variability logic
+      const hrv = Math.max(3, 45 - Math.round(i * 0.5));
+      // RR Interval should technically be inverse to Heart Rate (60000 / HR)
+      const rrInterval = Math.round(60000 / heartRate) + (Math.random() * 10 - 5);
+
+      return {
+        heart_rate: heartRate,
+        ecg_value: ecg,
+        spo2: spo2,
+        respiration_rate: respirationRate,
+        hrv: hrv,
+        rrInterval: rrInterval
+      };
+    });
+  }
+
+  setInterval(() => {
+    const row = csvData[csvIndex % csvData.length];
+    csvIndex++;
+    
+    const vitals = {
+      heartRate: parseInt(row.heart_rate),
+      spo2: parseInt(row.spo2),
+      respirationRate: parseInt(row.respiration_rate), // Added this
+      hrv: parseInt(row.hrv),
+      rrInterval: parseInt(row.rrInterval),
+      ecg: parseFloat(row.ecg_value)
+    };
+
+    currentVitals = vitals;
+    updateDisplay(vitals);
+    socket.emit('vitals_update', { ...vitals, symptoms: activeSymptoms });
+  }, 800);
+}
+
+    socket.on('risk_update', (data) => {
+      updateRisk(data.score, data.level);
+    });
+
+    function updateDisplay(v) {
+      document.getElementById('hr-display').textContent = v.heartRate;
+      document.getElementById('spo2-display').textContent = v.spo2;
+      document.getElementById('hrv-display').textContent = v.hrv;
+      document.getElementById('rr-display').textContent = v.rrInterval;
+      document.getElementById('ecg-display').textContent = v.ecg.toFixed(2);
+
+      ecgChart.data.datasets[0].data.push(v.ecg);
+      ecgChart.data.datasets[0].data.shift();
+      ecgChart.update('none');
+
+      hrChart.data.datasets[0].data.push(v.heartRate);
+      hrChart.data.datasets[0].data.shift();
+      hrChart.update();
+    }
+
+    // ─── Risk helpers ───────────────────────────────────────────────────────────
+    function riskColor(score) {
+      if (score >= 70) return 'var(--red)';
+      if (score >= 40) return 'var(--amber)';
+      return 'var(--green)';
+    }
+
+    function riskClass(score) {
+      if (score >= 70) return 'emergency';
+      if (score >= 40) return 'warning';
+      return 'normal';
+    }
+
+    function riskLabel(score) {
+      if (score >= 70) return 'EMERGENCY';
+      if (score >= 40) return 'WARNING';
+      return 'NORMAL';
+    }
+
+    function updateRisk(score, level) {
+      const num = document.getElementById('risk-num');
+      const badge = document.getElementById('risk-badge');
+      const advice = document.getElementById('risk-advice');
+      const arc = document.getElementById('risk-arc-path');
+
+      num.textContent = score;
+      const color = riskColor(score);
+      num.style.color = color;
+      arc.style.stroke = color;
+
+      // Arc offset: 220 total = 0%, 0 = 100%
+      const offset = 220 - (score / 100) * 220;
+      arc.style.strokeDashoffset = offset;
+
+      badge.className = `risk-badge ${riskClass(score)}`;
+      badge.textContent = riskLabel(score);
+
+      if (level === 'EMERGENCY') {
+        advice.textContent = 'Critical risk detected! Consider calling emergency services immediately.';
+        triggerEmergencyCheck();
+      } else if (level === 'WARNING') {
+        advice.textContent = 'Elevated cardiac risk detected. Monitor closely and rest.';
+      } else {
+        advice.textContent = 'All vitals within normal range. Stay hydrated and rest well.';
+      }
+    }
+
+    // ─── AI Analysis ────────────────────────────────────────────────────────────
+    async function runAiAnalysis() {
+      const btn = document.getElementById('ai-btn');
+      const content = document.getElementById('ai-content');
+
+      btn.disabled = true;
+      btn.textContent = 'Thinking...';
+      content.style.opacity = '0.5';
+
+      try {
+        const hrTrend = hrChart.data.datasets[0].data.slice(-10);
+
+        const data = await api('POST', '/api/ai-analyze', {
+          ...currentVitals,
+          symptoms: activeSymptoms,
+          trend: hrTrend
+        });
+
+        content.innerHTML = `
+          <div style="font-size:0.85rem; margin-bottom:0.8rem;">
+            <strong style="color:var(--text);">Assessment:</strong> ${data.assessment}
+          </div>
+          <div style="font-size:0.75rem;">
+            <strong style="color:var(--red);">Priority:</strong> ${data.risk_level}
+          </div>
+          <ul style="font-size:0.75rem; margin-top:0.5rem; padding-left:1.2rem; color:var(--sub);">
+            ${data.action_steps.map(step => `<li>${step}</li>`).join('')}
+          </ul>
+        `;
+      } catch (err) {
+        content.innerHTML = `<p style="font-size:0.8rem; color:var(--red);">AI Analysis unavailable. Please try again.</p>`;
+        Toast.show('AI Analysis unavailable', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Re-Analyze';
+        content.style.opacity = '1';
+      }
+    }
+
+    // ─── Symptoms ───────────────────────────────────────────────────────────────
+    function toggleSymptom(el) {
+      const key = el.dataset.key;
+      el.classList.toggle('active');
+      if (el.classList.contains('active')) {
+        if (!activeSymptoms.includes(key)) activeSymptoms.push(key);
+      } else {
+        activeSymptoms = activeSymptoms.filter(s => s !== key);
+      }
+    }
+
+    // ─── Emergency Flow ─────────────────────────────────────────────────────────
+    function triggerEmergencyCheck() {
+      if (emergencyShown) return;
+      emergencyShown = true;
+      showConfirmModal();
+    }
+
+    function showConfirmModal() {
+      document.getElementById('confirm-modal').classList.remove('hidden');
+      let secs = 30;
+      const circle = document.getElementById('countdown-circle');
+      const numEl = document.getElementById('countdown-num');
+      const secEl = document.getElementById('countdown-sec');
+      const circumference = 213.6;
+
+      countdownTimer = setInterval(() => {
+        secs--;
+        numEl.textContent = secs;
+        secEl.textContent = secs;
+        circle.style.strokeDashoffset = (secs / 30) * circumference;
+        if (secs <= 0) {
+          clearInterval(countdownTimer);
+          confirmEmergency();
+        }
+      }, 1000);
+    }
+
+    if (!SpeechRecognition) {
+  console.error("Speech Recognition not supported in this browser.");
+} else {
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onerror = (event) => {
+    console.error("Speech error:", event.error);
+  };
+
+  recognition.onend = () => {
+    if (!window.speechSynthesis.speaking) {
+      try { recognition.start(); } catch(e) {}
+    }
+  };
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+    console.log("Heard:", transcript);
+
+    if (transcript.includes("chest pain") || transcript.includes("dizzy") || transcript.includes("feeling sick")) {
+      if (currentVitals.heartRate > 100 || currentVitals.spo2 < 92) {
+        speakAlert("Your vitals are unstable. I am calling for help immediately.");
+        triggerManualHelp();
+      } else {
+        speakAlert("I've noted your symptoms. Your vitals are currently stable. Please sit and rest.");
+      }
+    } else if (transcript.includes("help") || transcript.includes("emergency") || transcript.includes("sos")) {
+      speakAlert("Emergency recognized. Calling your contact now.");
+      triggerManualHelp();
+    }
+  };
+
+  // Start on first click anywhere — browser requires this one gesture for mic permission
+  document.addEventListener('click', () => {
+    try { recognition.start(); } catch(e) {}
+  }, { once: true });
+}
+
+async function triggerManualHelp() {
+  try {
+    const response = await api('POST', '/api/help-call');
+    if (response.success) Toast.show("Emergency call placed!", "error");
+  } catch (err) {
+    console.error("API Call Failed:", err);
+  }
+}
+
+function speakAlert(text) {
+  if (!('speechSynthesis' in window)) return;
+  if (recognition) recognition.stop();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.pitch = 1.2;
+  utterance.rate = 1.0;
+  utterance.onend = () => { if (recognition) recognition.start(); };
+  window.speechSynthesis.speak(utterance);
+}
+
+// --- 4. Activation (Start on First Click) ---
+window.addEventListener('click', () => {
+    if (recognition) {
+        try {
+            recognition.start();
+            speakAlert("Voice monitoring is now active. I am listening for your safety.");
+            Toast.show("Voice Monitor: ON", "success");
+        } catch (e) {
+            console.log("Recognition already running.");
+        }
+    }
+}, { once: true });
+
+    function dismissAlert() {
+      clearInterval(countdownTimer);
+      document.getElementById('confirm-modal').classList.add('hidden');
+      emergencyShown = false;
+      Toast.show("Glad you're okay! Keep monitoring.", 'success');
+    }
+
+    async function confirmEmergency() {
+      clearInterval(countdownTimer);
+      document.getElementById('confirm-modal').classList.add('hidden');
+
+      let lat = 28.6139, lng = 77.2090;
+      try {
+        const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 }));
+        lat = pos.coords.latitude; lng = pos.coords.longitude;
+      } catch {}
+
+      try {
+        await api('POST', '/api/alert', {
+          riskScore: parseInt(document.getElementById('risk-num').textContent),
+          heartRate: currentVitals.heartRate,
+          spo2: currentVitals.spo2,
+          hrv: currentVitals.hrv,
+          symptoms: activeSymptoms,
+          lat, lng
+        });
+        document.getElementById('sent-modal').classList.remove('hidden');
+        document.getElementById('sos-btn').classList.add('armed');
+        Toast.show('Emergency alert sent to nearby responders!', 'error');
+      } catch (err) {
+        Toast.show('Alert failed: ' + err.message, 'error');
+        emergencyShown = false;
+      }
+    }
+
+    function triggerSOS() {
+      if (!emergencyShown) {
+        emergencyShown = true;
+        showConfirmModal();
+      }
+    }
+
+    function closeSentModal() {
+      document.getElementById('sent-modal').classList.add('hidden');
+      emergencyShown = false;
+      document.getElementById('sos-btn').classList.remove('armed');
+    }
+
+    init();
+  </script>
+</body>
+</html>

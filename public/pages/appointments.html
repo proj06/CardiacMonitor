@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cardiac SOS — Service Requests</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .request-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badge-premium {
+      background: var(--gold);
+      color: black;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 800;
+    }
+    .req-info h3 { margin-bottom: 0.5rem; font-size: 1.1rem; }
+    .req-info p { color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-logo">Cardiac<span>SOS</span></div>
+    <ul class="nav-links">
+      <li><a href="/responder">Back to Alerts</a></li>
+    </ul>
+  </nav>
+
+  <div class="container" style="padding-top: 5rem;">
+    <h2 style="margin-bottom: 2rem;">Premium Service Requests</h2>
+    <div id="request-list">
+      <p>Loading requests...</p>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    async function loadRequests() {
+      try {
+        const requests = await api('GET', '/api/responder/requests');
+        const container = document.getElementById('request-list');
+        
+        if (requests.length === 0) {
+          container.innerHTML = "<p>No pending service requests.</p>";
+          return;
+        }
+
+        container.innerHTML = requests.map(req => `
+          <div class="request-card">
+            <div class="req-info">
+              <span class="badge-premium">PREMIUM</span>
+              <h3>Patient: ${req.userName}</h3>
+              <p><strong>Issue:</strong> ${req.problem}</p>
+              <p><strong>Type:</strong> ${req.facilityType}</p>
+              <p style="font-size:0.75rem;">Requested: ${new Date(req.createdAt).toLocaleString()}</p>
+            </div>
+            <button onclick="contactPatient('${req.userName}')" class="btn btn-primary">Contact Patient</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('request-list').innerHTML = "Error loading requests.";
+      }
+    }
+
+    function contactPatient(name) {
+      alert("Opening secure line to " + name + "...");
+    }
+
+    loadRequests();
+  </script>
+</body>
+</html>
